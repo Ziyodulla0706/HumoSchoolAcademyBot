@@ -13,7 +13,7 @@ from bot.states.registration import (
 
 from bot.db.database import SessionLocal
 from bot.db.models import User, Child, PickupRequest, Grade, Attendance, Homework, Comment, Subject
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from sqlalchemy import func
 
 from bot.keyboards.parent import (
@@ -153,7 +153,7 @@ async def process_child_class(message: Message, state: FSMContext):
         session.close()
 
 
-@router.message(lambda m: m.text == "Мои дети")
+@router.message(lambda m: m.text == "👶 Мои дети" or m.text == "Мои дети")
 async def list_children(message: Message):
     session = SessionLocal()
     try:
@@ -227,7 +227,7 @@ async def update_phone_process(message: Message, state: FSMContext):
 # Я ЕДУ ЗА РЕБЁНКОМ
 # =========================
 
-@router.message(lambda m: m.text == "Я еду за ребёнком")
+@router.message(lambda m: m.text == "🚗 Я еду за ребёнком" or m.text == "Я еду за ребёнком")
 async def pickup_start(message: Message, state: FSMContext):
     session = SessionLocal()
     try:
@@ -576,6 +576,84 @@ async def parent_view_rating(message: Message):
                 text += f"  Посещаемость: нет данных\n"
             text += "\n"
 
+        await message.answer(text)
+    finally:
+        session.close()
+
+
+@router.message(lambda m: m.text == "🔔 Уведомления школы")
+async def parent_notifications(message: Message):
+    """Просмотр уведомлений школы"""
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.telegram_id == message.from_user.id).first()
+        if not user:
+            await message.answer("Сначала зарегистрируйтесь через /start")
+            return
+
+        children = session.query(Child).filter(Child.parent_id == user.id).all()
+        if not children:
+            await message.answer("У вас нет добавленных детей.")
+            return
+
+        # Получаем последние уведомления (оценки, посещаемость, комментарии, ДЗ)
+        text = "🔔 Уведомления школы:\n\n"
+        
+        # Последние оценки (за последние 7 дней)
+        week_ago = datetime.utcnow() - timedelta(days=7)
+        child_ids = [c.id for c in children]
+        
+        recent_grades = session.query(Grade).filter(
+            Grade.child_id.in_(child_ids),
+            Grade.created_at >= week_ago
+        ).order_by(Grade.created_at.desc()).limit(5).all()
+        
+        if recent_grades:
+            text += "📝 Последние оценки:\n"
+            for grade in recent_grades:
+                child = next((c for c in children if c.id == grade.child_id), None)
+                subject = session.query(Subject).filter(Subject.id == grade.subject_id).first()
+                if child and subject:
+                    text += f"  • {child.full_name}: {subject.name} - {grade.grade} ({grade.date.strftime('%d.%m')})\n"
+            text += "\n"
+        
+        # Последние комментарии (за последние 7 дней)
+        recent_comments = session.query(Comment).filter(
+            Comment.child_id.in_(child_ids),
+            Comment.created_at >= week_ago
+        ).order_by(Comment.created_at.desc()).limit(5).all()
+        
+        if recent_comments:
+            text += "💬 Последние комментарии:\n"
+            for comment in recent_comments:
+                child = next((c for c in children if c.id == comment.child_id), None)
+                if child:
+                    type_map = {
+                        "behavior": "Поведение",
+                        "attendance": "Посещаемость",
+                        "performance": "Успеваемость",
+                    }
+                    text += f"  • {child.full_name}: {type_map.get(comment.comment_type, comment.comment_type)} ({comment.created_at.strftime('%d.%m')})\n"
+            text += "\n"
+        
+        # Активные домашние задания
+        class_names = [c.class_name for c in children]
+        active_homework = session.query(Homework).filter(
+            Homework.class_name.in_(class_names),
+            Homework.due_date >= date.today()
+        ).order_by(Homework.due_date).limit(5).all()
+        
+        if active_homework:
+            text += "📚 Активные домашние задания:\n"
+            for hw in active_homework:
+                subject = session.query(Subject).filter(Subject.id == hw.subject_id).first()
+                if subject:
+                    text += f"  • {hw.class_name}: {subject.name} - до {hw.due_date.strftime('%d.%m')}\n"
+            text += "\n"
+        
+        if not recent_grades and not recent_comments and not active_homework:
+            text += "Нет новых уведомлений за последнюю неделю."
+        
         await message.answer(text)
     finally:
         session.close()
