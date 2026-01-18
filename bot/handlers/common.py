@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from bot.db.database import SessionLocal
 from bot.db.models import User, Teacher
@@ -179,4 +179,11 @@ async def admin_role_handler(message: Message, state: FSMContext):
         )
     finally:
         session.close()
+
+
+@router.message(Command("cancel"))
+async def cancel_handler(message: Message, state: FSMContext):
+    """Сброс состояния FSM"""
+    await state.clear()
+    await message.answer("Состояние сброшено. Используйте /start для начала работы.")
 

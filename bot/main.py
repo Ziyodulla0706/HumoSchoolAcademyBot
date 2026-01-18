@@ -75,6 +75,8 @@ async def main():
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher()
 
+        # Регистрируем роутеры в правильном порядке
+        # common.router должен быть первым, так как содержит /start
         dp.include_router(common.router)
         dp.include_router(parent.router)
         dp.include_router(admin.router)
@@ -83,7 +85,8 @@ async def main():
         dp.include_router(attendance.router)
 
         logging.info("Starting polling...")
-        await dp.start_polling(bot)
+        # В aiogram 3.x используется await dp.start_polling(bot)
+        await dp.start_polling(bot, skip_updates=True)
 
     except Exception:
         logging.exception("Fatal error in main()")

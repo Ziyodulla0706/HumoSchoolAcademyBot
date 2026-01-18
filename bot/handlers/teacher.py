@@ -22,39 +22,8 @@ from bot.keyboards.admin import teacher_verify_keyboard
 router = Router()
 
 
-@router.message(F.text == "👨‍🏫 Я учитель")
-async def teacher_start(message: Message, state: FSMContext):
-    """Обработчик для регистрации учителя (старая кнопка для обратной совместимости)"""
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter(User.telegram_id == message.from_user.id).first()
-        if not user:
-            await message.answer("Сначала зарегистрируйтесь как родитель через /start.")
-            return
-
-        if not user.is_verified:
-            await message.answer("Ваша регистрация ожидает подтверждения администратора.")
-            return
-
-        teacher = session.query(Teacher).filter(Teacher.user_id == user.id).first()
-
-        # Уже подтверждённый учитель -> меню
-        if teacher and (teacher.status == "approved" or teacher.is_verified):
-            await state.clear()
-            await message.answer("Меню учителя:", reply_markup=teacher_main_keyboard())
-            return
-
-        # Заявка уже есть, но не подтверждена
-        if teacher and teacher.status != "approved" and not teacher.is_verified:
-            await message.answer("Ваша заявка уже отправлена. Ожидайте подтверждения администратора.")
-            return
-
-    finally:
-        session.close()
-
-    # Начинаем регистрацию
-    await message.answer("Введите ваше ФИО:")
-    await state.set_state(TeacherRegistrationState.waiting_full_name)
+# Обработчик "👨‍🏫 Я учитель" находится в common.py для выбора роли
+# Этот обработчик удалён, чтобы избежать конфликтов
 
 
 @router.message(TeacherRegistrationState.waiting_full_name)

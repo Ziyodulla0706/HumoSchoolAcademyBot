@@ -104,7 +104,7 @@ async def process_phone(message: Message, state: FSMContext):
 # ДЕТИ
 # =========================
 
-@router.message(lambda m: m.text == "Добавить ребёнка")
+@router.message(lambda m: m.text == "➕ Добавить ребёнка" or m.text == "Добавить ребёнка")
 async def add_child_start(message: Message, state: FSMContext):
     await message.answer("Введите ФИО ребёнка:")
     await state.set_state(AddChildState.waiting_child_name)
@@ -364,30 +364,8 @@ async def pickup_choose_time(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
 
-@router.message(lambda m: m.text == "Я учитель")
-async def switch_to_teacher(message: Message):
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter(
-            User.telegram_id == message.from_user.id
-        ).first()
-
-        if not user:
-            await message.answer("Сначала нажмите /start и пройдите регистрацию.")
-            return
-
-        # переключаем роль
-        user.role = "teacher"
-        user.is_verified = False
-        session.commit()
-
-        await message.answer(
-            "Вы переключились в режим учителя.\n"
-            "Ожидайте подтверждения администратора.\n\n"
-            "После подтверждения нажмите кнопку «Я учитель» для доступа к меню учителя."
-        )
-    finally:
-        session.close()
+# Обработчик "Я учитель" удалён - используйте "👨‍🏫 Я учитель" из меню выбора роли
+# Обработчик находится в common.py
 
 
 # =========================
