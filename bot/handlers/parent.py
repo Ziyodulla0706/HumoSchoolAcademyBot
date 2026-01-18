@@ -36,7 +36,13 @@ router = Router()
 
 @router.message(RegistrationState.waiting_full_name)
 async def process_full_name(message: Message, state: FSMContext):
-    full_name = " ".join((message.text or "").split())
+    # Проверяем, не является ли это выбором роли
+    text = (message.text or "").strip()
+    if text in ["👨‍🏫 Я учитель", "Я учитель", "👨‍👩‍👧 Я родитель", "Я родитель", "⚙️ Я администратор", "Я администратор"]:
+        # Это выбор роли, не обрабатываем здесь
+        return
+    
+    full_name = " ".join(text.split())
     if len(full_name) < 3:
         await message.answer("Введите ФИО корректно.")
         return

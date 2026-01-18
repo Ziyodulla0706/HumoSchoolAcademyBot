@@ -28,7 +28,13 @@ router = Router()
 
 @router.message(TeacherRegistrationState.waiting_full_name)
 async def teacher_full_name(message: Message, state: FSMContext):
-    await state.update_data(full_name=(message.text or "").strip())
+    # Проверяем, не является ли это выбором роли
+    text = (message.text or "").strip()
+    if text in ["👨‍🏫 Я учитель", "Я учитель", "👨‍👩‍👧 Я родитель", "Я родитель", "⚙️ Я администратор", "Я администратор"]:
+        # Это выбор роли, не обрабатываем здесь
+        return
+    
+    await state.update_data(full_name=text)
     await message.answer(
         "Введите предмет, который вы преподаёте:\n"
         "Например: Математика, Русский язык, Физика и т.д."

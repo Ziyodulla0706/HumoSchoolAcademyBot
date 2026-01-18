@@ -8,6 +8,7 @@ from bot.config import ADMIN_IDS
 from bot.keyboards.common import role_selection_keyboard
 from bot.keyboards.parent import parent_main_keyboard
 from bot.keyboards.teacher import teacher_main_keyboard
+import logging
 
 router = Router()
 
@@ -17,103 +18,30 @@ def is_admin_user(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 
-@router.message(CommandStart())
-async def start_handler(message: Message, state: FSMContext):
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter(
-            User.telegram_id == message.from_user.id
-        ).first()
+# Обработчики выбора роли должны быть ПЕРЕД обработчиком /start
+# чтобы они обрабатывались первыми и могли очистить состояние
 
-        # Новый пользователь — показываем выбор роли
-        if not user:
-            await message.answer(
-                "👋 Добро пожаловать в школьный бот!\n\n"
-                "Выберите вашу роль:",
-                reply_markup=role_selection_keyboard(
-                    is_admin=is_admin_user(message.from_user.id)
-                )
-            )
-            return
-
-        # Заблокированный пользователь
-        if user.is_blocked:
-            await message.answer(
-                "❌ Ваш аккаунт заблокирован. Обратитесь к администратору."
-            )
-            return
-
-        # Есть, но не подтверждён
-        if not user.is_verified:
-            await message.answer(
-                "⏳ Ваша регистрация ожидает подтверждения администратора."
-            )
-            return
-
-        # ✅ Подтверждённый пользователь — показываем выбор роли
-        admin_access = is_admin_user(message.from_user.id)
-        await message.answer(
-            f"👋 Здравствуйте, {user.full_name}!\n\n"
-            "Выберите режим работы:",
-            reply_markup=role_selection_keyboard(is_admin=admin_access)
-        )
-    finally:
-        session.close()
-
-
-@router.message(F.text == "👨‍👩‍👧 Я родитель")
-async def parent_role_handler(message: Message, state: FSMContext):
-    """Обработчик выбора роли родителя"""
-    from bot.states.registration import RegistrationState
-    
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter(
-            User.telegram_id == message.from_user.id
-        ).first()
-
-        # Если пользователя нет - начинаем регистрацию
-        if not user:
-            await message.answer(
-                "👨‍👩‍👧 Вы выбрали режим родителя.\n\n"
-                "Для работы в этом режиме необходимо пройти регистрацию.\n"
-                "Введите ваше ФИО:"
-            )
-            await state.set_state(RegistrationState.waiting_full_name)
-            return
-
-        if user.is_blocked:
-            await message.answer("❌ Ваш аккаунт заблокирован.")
-            return
-
-        if not user.is_verified:
-            await message.answer("⏳ Ваша регистрация ожидает подтверждения администратора.")
-            return
-
-        # Переключаем роль на parent
-        user.role = "parent"
-        session.commit()
-
-        await message.answer(
-            "👨‍👩‍👧 Режим родителя\n\n"
-            "Выберите действие:",
-            reply_markup=parent_main_keyboard()
-        )
-    finally:
-        session.close()
-
-
-@router.message(F.text == "👨‍🏫 Я учитель")
+@router.message(F.text.in_(["👨‍🏫 Я учитель", "Я учитель"]))
 async def teacher_role_handler(message: Message, state: FSMContext):
     """Обработчик выбора роли учителя"""
     from bot.states.teacher_registration import TeacherRegistrationState
     from bot.states.registration import RegistrationState
     
+    # Очищаем состояние, если пользователь был в процессе регистрации
+    current_state = await state.get_state()
+    if current_state:
+        logging.info(f"Clearing state {current_state} for user {message.from_user.id}")
+        await state.clear()
+    
+    logging.info(f"Teacher role handler called for user {message.from_user.id}, text: '{message.text}'")
+    
     session = SessionLocal()
     try:
         user = session.query(User).filter(
             User.telegram_id == message.from_user.id
         ).first()
+        
+        logging.info(f"User found: {user is not None}, is_verified: {user.is_verified if user else None}")
 
         # Если пользователя нет - сначала нужно зарегистрироваться как родитель
         if not user:
@@ -166,6 +94,97 @@ async def teacher_role_handler(message: Message, state: FSMContext):
             f"Здравствуйте, {user.full_name}!\n"
             "Выберите действие:",
             reply_markup=teacher_main_keyboard()
+        )
+    finally:
+        session.close()
+
+
+@router.message(CommandStart())
+async def start_handler(message: Message, state: FSMContext):
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(
+            User.telegram_id == message.from_user.id
+        ).first()
+
+        # Новый пользователь — показываем выбор роли
+        if not user:
+            await message.answer(
+                "👋 Добро пожаловать в школьный бот!\n\n"
+                "Выберите вашу роль:",
+                reply_markup=role_selection_keyboard(
+                    is_admin=is_admin_user(message.from_user.id)
+                )
+            )
+            return
+
+        # Заблокированный пользователь
+        if user.is_blocked:
+            await message.answer(
+                "❌ Ваш аккаунт заблокирован. Обратитесь к администратору."
+            )
+            return
+
+        # Есть, но не подтверждён
+        if not user.is_verified:
+            await message.answer(
+                "⏳ Ваша регистрация ожидает подтверждения администратора."
+            )
+            return
+
+        # ✅ Подтверждённый пользователь — показываем выбор роли
+        admin_access = is_admin_user(message.from_user.id)
+        await message.answer(
+            f"👋 Здравствуйте, {user.full_name}!\n\n"
+            "Выберите режим работы:",
+            reply_markup=role_selection_keyboard(is_admin=admin_access)
+        )
+    finally:
+        session.close()
+
+
+@router.message(F.text == "👨‍👩‍👧 Я родитель")
+async def parent_role_handler(message: Message, state: FSMContext):
+    """Обработчик выбора роли родителя"""
+    from bot.states.registration import RegistrationState
+    
+    # Очищаем состояние, если пользователь был в процессе регистрации
+    current_state = await state.get_state()
+    if current_state:
+        await state.clear()
+    
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(
+            User.telegram_id == message.from_user.id
+        ).first()
+
+        # Если пользователя нет - начинаем регистрацию
+        if not user:
+            await message.answer(
+                "👨‍👩‍👧 Вы выбрали режим родителя.\n\n"
+                "Для работы в этом режиме необходимо пройти регистрацию.\n"
+                "Введите ваше ФИО:"
+            )
+            await state.set_state(RegistrationState.waiting_full_name)
+            return
+
+        if user.is_blocked:
+            await message.answer("❌ Ваш аккаунт заблокирован.")
+            return
+
+        if not user.is_verified:
+            await message.answer("⏳ Ваша регистрация ожидает подтверждения администратора.")
+            return
+
+        # Переключаем роль на parent
+        user.role = "parent"
+        session.commit()
+
+        await message.answer(
+            "👨‍👩‍👧 Режим родителя\n\n"
+            "Выберите действие:",
+            reply_markup=parent_main_keyboard()
         )
     finally:
         session.close()
