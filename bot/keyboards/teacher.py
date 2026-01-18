@@ -1,16 +1,23 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton
+)
 
 def teacher_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text="✅ Отметить посещаемость")],
+            [KeyboardButton(text="📝 Поставить оценку")],
+            [KeyboardButton(text="💬 Добавить комментарий ученику")],
+            [KeyboardButton(text="📚 Домашнее задание")],
+            [KeyboardButton(text="✉️ Сообщение родителям")],
             [KeyboardButton(text="📚 Мои классы")],
-            [KeyboardButton(text="✉️ Сообщение родителям")]
+            [KeyboardButton(text="🚪 Выйти из режима учителя")],
         ],
         resize_keyboard=True
     )
 
 def teacher_classes_keyboard(classes: list[str]):
-    # inline-кнопки с выбором класса
     rows = []
     for cls in classes:
         rows.append([InlineKeyboardButton(text=cls, callback_data=f"tmsg_class:{cls}")])
@@ -25,3 +32,4 @@ def teacher_message_type_keyboard():
             [InlineKeyboardButton(text="❌ Отмена", callback_data="tmsg_cancel")]
         ]
     )
+

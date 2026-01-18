@@ -11,5 +11,13 @@ class AddChildState(StatesGroup):
 class PickupState(StatesGroup):
     choosing_child = State()
     choosing_time = State()
+    
 class UpdatePhoneState(StatesGroup):
     waiting_phone = State()
+
+class UpdateFullNameState(StatesGroup):
+    waiting_full_name = State()
+
+class UpdateChildNameState(StatesGroup):
+    choosing_child = State()
+    waiting_new_name = State()

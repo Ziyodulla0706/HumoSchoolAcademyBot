@@ -1,4 +1,4 @@
-from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.state import StatesGroup, State
 
 class TeacherMessageState(StatesGroup):
     choosing_class = State()
