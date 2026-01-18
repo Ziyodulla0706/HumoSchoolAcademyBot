@@ -91,10 +91,15 @@ async def process_phone(message: Message, state: FSMContext):
     finally:
         session.close()
 
+    # После регистрации показываем меню выбора роли, чтобы пользователь мог выбрать роль учителя
+    from bot.keyboards.common import role_selection_keyboard
+    from bot.config import ADMIN_IDS
+    
     await message.answer(
-        "Регистрация завершена.\n"
-        "Ожидайте подтверждения администратора.",
-        reply_markup=parent_main_keyboard()
+        "✅ Регистрация завершена.\n"
+        "Ожидайте подтверждения администратора.\n\n"
+        "💡 Вы можете также зарегистрироваться как учитель:",
+        reply_markup=role_selection_keyboard(is_admin=message.from_user.id in ADMIN_IDS)
     )
     await state.clear()
 
