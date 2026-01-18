@@ -64,14 +64,22 @@ async def start_handler(message: Message, state: FSMContext):
 @router.message(F.text == "👨‍👩‍👧 Я родитель")
 async def parent_role_handler(message: Message, state: FSMContext):
     """Обработчик выбора роли родителя"""
+    from bot.states.registration import RegistrationState
+    
     session = SessionLocal()
     try:
         user = session.query(User).filter(
             User.telegram_id == message.from_user.id
         ).first()
 
+        # Если пользователя нет - начинаем регистрацию
         if not user:
-            await message.answer("Сначала зарегистрируйтесь через /start")
+            await message.answer(
+                "👨‍👩‍👧 Вы выбрали режим родителя.\n\n"
+                "Для работы в этом режиме необходимо пройти регистрацию.\n"
+                "Введите ваше ФИО:"
+            )
+            await state.set_state(RegistrationState.waiting_full_name)
             return
 
         if user.is_blocked:
@@ -79,7 +87,7 @@ async def parent_role_handler(message: Message, state: FSMContext):
             return
 
         if not user.is_verified:
-            await message.answer("⏳ Ваша регистрация ожидает подтверждения.")
+            await message.answer("⏳ Ваша регистрация ожидает подтверждения администратора.")
             return
 
         # Переключаем роль на parent
@@ -98,14 +106,23 @@ async def parent_role_handler(message: Message, state: FSMContext):
 @router.message(F.text == "👨‍🏫 Я учитель")
 async def teacher_role_handler(message: Message, state: FSMContext):
     """Обработчик выбора роли учителя"""
+    from bot.states.teacher_registration import TeacherRegistrationState
+    from bot.states.registration import RegistrationState
+    
     session = SessionLocal()
     try:
         user = session.query(User).filter(
             User.telegram_id == message.from_user.id
         ).first()
 
+        # Если пользователя нет - сначала нужно зарегистрироваться как родитель
         if not user:
-            await message.answer("Сначала зарегистрируйтесь через /start")
+            await message.answer(
+                "👨‍🏫 Вы выбрали режим учителя.\n\n"
+                "Сначала необходимо зарегистрироваться как родитель.\n"
+                "Введите ваше ФИО:"
+            )
+            await state.set_state(RegistrationState.waiting_full_name)
             return
 
         if user.is_blocked:
@@ -113,7 +130,7 @@ async def teacher_role_handler(message: Message, state: FSMContext):
             return
 
         if not user.is_verified:
-            await message.answer("⏳ Ваша регистрация ожидает подтверждения.")
+            await message.answer("⏳ Ваша регистрация ожидает подтверждения администратора.")
             return
 
         # Проверяем, есть ли учитель в таблице teachers
@@ -122,11 +139,10 @@ async def teacher_role_handler(message: Message, state: FSMContext):
         ).first()
 
         if not teacher:
-            # Нет учителя — нужно зарегистрироваться
-            from bot.states.teacher_registration import TeacherRegistrationState
+            # Нет учителя — нужно зарегистрироваться как учитель
             await message.answer(
                 "👨‍🏫 Вы выбрали режим учителя.\n\n"
-                "Для работы в этом режиме необходимо пройти регистрацию.\n"
+                "Для работы в этом режиме необходимо пройти регистрацию учителя.\n"
                 "Введите ваше ФИО:"
             )
             await state.set_state(TeacherRegistrationState.waiting_full_name)
@@ -153,6 +169,8 @@ async def teacher_role_handler(message: Message, state: FSMContext):
 @router.message(F.text == "⚙️ Я администратор")
 async def admin_role_handler(message: Message, state: FSMContext):
     """Обработчик выбора роли администратора"""
+    from bot.states.registration import RegistrationState
+    
     if not is_admin_user(message.from_user.id):
         await message.answer("❌ У вас нет доступа к админ-панели.")
         return
@@ -163,8 +181,14 @@ async def admin_role_handler(message: Message, state: FSMContext):
             User.telegram_id == message.from_user.id
         ).first()
 
+        # Если пользователя нет - начинаем регистрацию
         if not user:
-            await message.answer("Сначала зарегистрируйтесь через /start")
+            await message.answer(
+                "⚙️ Вы выбрали режим администратора.\n\n"
+                "Сначала необходимо пройти регистрацию.\n"
+                "Введите ваше ФИО:"
+            )
+            await state.set_state(RegistrationState.waiting_full_name)
             return
 
         user.role = "admin"
