@@ -4,11 +4,16 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton,InlineKeyboardMark
 def parent_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Я еду за ребёнком")],
-            [KeyboardButton(text="Мои дети")],
-            [KeyboardButton(text="Добавить ребёнка")],
-            [KeyboardButton(text="Я учитель")],
-            [KeyboardButton(text="Изменить номер телефона")],
+            [KeyboardButton(text="📊 Оценки")],
+            [KeyboardButton(text="📅 Посещаемость")],
+            [KeyboardButton(text="📝 Домашние задания")],
+            [KeyboardButton(text="💬 Комментарии учителей")],
+            [KeyboardButton(text="🏆 Рейтинг ребёнка")],
+            [KeyboardButton(text="🔔 Уведомления школы")],
+            [KeyboardButton(text="👶 Мои дети")],
+            [KeyboardButton(text="➕ Добавить ребёнка")],
+            [KeyboardButton(text="🚗 Я еду за ребёнком")],
+            [KeyboardButton(text="⚙️ Настройки")],
         ],
         resize_keyboard=True
     )
@@ -20,6 +25,19 @@ def children_inline_keyboard(children):
             InlineKeyboardButton(
                 text=f"{c.full_name} ({c.class_name})",
                 callback_data=f"pickup_child:{c.id}"
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def children_edit_keyboard(children):
+    """Клавиатура для выбора ребёнка для редактирования"""
+    keyboard = []
+    for c in children:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"✏️ {c.full_name} ({c.class_name})",
+                callback_data=f"edit_child:{c.id}"
             )
         ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
