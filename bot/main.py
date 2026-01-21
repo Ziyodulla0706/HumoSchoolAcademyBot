@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from bot.config import BOT_TOKEN
 from bot.db.database import engine, Base
 from bot.handlers import parent, admin, common, admin_manage, teacher, attendance
+from bot.middlewares import BlockCheckMiddleware
 
 
 # ---------------- LOGGING ----------------
@@ -74,6 +75,10 @@ async def main():
         # 4) Инициализация бота
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher()
+
+        # Регистрируем middleware для проверки блокировки пользователей
+        dp.message.middleware(BlockCheckMiddleware())
+        dp.callback_query.middleware(BlockCheckMiddleware())
 
         # Регистрируем роутеры в правильном порядке
         # common.router должен быть первым, так как содержит /start
