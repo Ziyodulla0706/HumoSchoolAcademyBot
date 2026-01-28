@@ -25,6 +25,7 @@ from bot.keyboards.parent import (
 
 from bot.keyboards.admin import guard_actions_keyboard
 from bot.config import GUARD_CHANNEL_ID
+from bot.services import is_auto_voice_active, PAAdapter
 import re
 
 router = Router()
@@ -312,17 +313,17 @@ async def pickup_choose_time(callback: CallbackQuery, state: FSMContext):
         # 1) Авто-просрочка старых активных заявок (например, старше 2 часов)
         expire_before = datetime.utcnow() - timedelta(hours=2)
         session.query(PickupRequest).filter(
-            PickupRequest.status == "ACTIVE",
+            PickupRequest.status == "PENDING",
             PickupRequest.created_at < expire_before
         ).update({PickupRequest.status: "EXPIRED"}, synchronize_session=False)
         session.commit()
 
         # 2) Анти-дубли:
-        # если уже есть ACTIVE заявка для этого ребёнка от этого родителя -> обновляем время, а не создаём новую
+        # если уже есть активная заявка для этого ребёнка от этого родителя -> обновляем время, а не создаём новую
         existing = session.query(PickupRequest).filter(
             PickupRequest.parent_id == parent.id,
             PickupRequest.child_id == child.id,
-            PickupRequest.status == "ACTIVE"
+            PickupRequest.status.in_(["PENDING", "ANNOUNCED"])
         ).order_by(PickupRequest.created_at.desc()).first()
 
         if existing:
@@ -332,12 +333,13 @@ async def pickup_choose_time(callback: CallbackQuery, state: FSMContext):
 
             pickup_id = existing.id
             status_text = "Заявка обновлена (без дубля)."
+            pickup_obj = existing
         else:
             pickup = PickupRequest(
                 parent_id=parent.id,
                 child_id=child.id,
                 arrival_minutes=minutes,
-                status="ACTIVE"
+                status="PENDING",
             )
             session.add(pickup)
             session.commit()
@@ -345,6 +347,7 @@ async def pickup_choose_time(callback: CallbackQuery, state: FSMContext):
 
             pickup_id = pickup.id
             status_text = "Заявка отправлена."
+            pickup_obj = pickup
 
         # Данные, которые будем использовать после закрытия session
         child_name = child.full_name
@@ -361,16 +364,48 @@ async def pickup_choose_time(callback: CallbackQuery, state: FSMContext):
         f"Прибытие через {minutes} мин."
     )
 
+    channel_message_id = None
+
     # Сообщение в канал охраны
     if GUARD_CHANNEL_ID:
-        await callback.bot.send_message(
+        guard_message = await callback.bot.send_message(
             GUARD_CHANNEL_ID,
-            f"📌 Выдача ученика\n"
+            "📌 Выдача ученика\n"
+            f"🟡 ОЖИДАЕТ ПЕРЕДАЧИ\n"
             f"Родитель: {parent_name}\n"
             f"Ученик: {child_name} ({class_name})\n"
             f"Ожидается через: {minutes} мин.",
-            reply_markup=guard_actions_keyboard(pickup_id)
+            reply_markup=guard_actions_keyboard(pickup_id),
         )
+        channel_message_id = guard_message.message_id
+
+    # Обновляем заявку информацией о сообщении и, при необходимости, выполняем первую озвучку
+    session = SessionLocal()
+    try:
+        pr = session.query(PickupRequest).filter(PickupRequest.id == pickup_id).first()
+        if pr:
+            if channel_message_id is not None:
+                pr.channel_message_id = channel_message_id
+
+            # Автоматическая озвучка при создании/обновлении заявки
+            if is_auto_voice_active():
+                pa = PAAdapter()
+                announce_text = (
+                    f"Просьба вызвать ученика {child_name} "
+                    f"из класса {class_name} к выходу. "
+                    f"Родитель прибудет через {minutes} минут."
+                )
+                ok = await pa.announce(announce_text)
+                if ok:
+                    now = datetime.utcnow()
+                    pr.last_announce_at = now
+                    pr.next_announce_at = now + timedelta(minutes=4)
+                    pr.announce_count = (pr.announce_count or 0) + 1
+                    pr.status = "ANNOUNCED"
+
+            session.commit()
+    finally:
+        session.close()
 
     await state.clear()
     await callback.answer()

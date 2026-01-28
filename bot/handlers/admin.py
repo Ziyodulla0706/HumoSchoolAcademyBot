@@ -5,7 +5,7 @@ from bot.config import ADMIN_IDS
 from bot.db.database import SessionLocal
 from bot.db.models import User, PickupRequest, Child
 from bot.keyboards.admin import approve_user_keyboard
-from datetime import datetime
+from datetime import datetime, date
 
 router = Router()
 
@@ -78,6 +78,11 @@ async def approve_user(callback: CallbackQuery):
 
 @router.callback_query(lambda c: c.data.startswith("pickup_done:"))
 async def pickup_done(callback: CallbackQuery):
+    # Доступ только для администраторов/ответственных сотрудников
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+
     pickup_id = int(callback.data.split(":")[1])
 
     session = SessionLocal()
@@ -85,6 +90,11 @@ async def pickup_done(callback: CallbackQuery):
         pickup = session.query(PickupRequest).filter(PickupRequest.id == pickup_id).first()
         if not pickup:
             await callback.answer("Заявка не найдена.", show_alert=True)
+            return
+
+        # Если уже отмечено как переданный — ничего не делаем
+        if pickup.status == "HANDED_OVER":
+            await callback.answer("Ученик уже отмечен как переданный.")
             return
 
         # Получаем данные о родителе и ребёнке
@@ -95,24 +105,77 @@ async def pickup_done(callback: CallbackQuery):
             await callback.answer("Ошибка: данные не найдены.", show_alert=True)
             return
 
-        pickup.status = "DONE"
-        pickup.updated_at = datetime.utcnow()
+        now = datetime.utcnow()
+        pickup.status = "HANDED_OVER"
+        pickup.updated_at = now
+        pickup.handed_over_at = now
+        pickup.handed_over_by = callback.from_user.id
         session.commit()
 
         # Формируем обновлённое сообщение с сохранением всей информации
-        # Пересобираем сообщение из данных БД, чтобы сохранить всю информацию
         new_text = (
-            f"📌 Выдача ученика\n"
+            "📌 Выдача ученика\n"
+            "🟢 РЕБЕНОК ПЕРЕДАН\n"
             f"Родитель: {parent.full_name}\n"
             f"Ученик: {child.full_name} ({child.class_name})\n"
-            f"Ожидается через: {pickup.arrival_minutes} мин.\n"
-            f"✅ Статус: Передан родителю"
+            f"Ожидался через: {pickup.arrival_minutes} мин."
         )
 
         # Обновляем сообщение, убирая клавиатуру
         await callback.message.edit_text(new_text, reply_markup=None)
     finally:
         session.close()
+
+    # Отправляем уведомление родителю
+    farewell = ""
+    today = date.today()
+    weekday = today.weekday()  # 0 = Пн, 6 = Вс
+
+    if weekday <= 3:  # Пн–Чт
+        farewell = "Всего доброго! Ждём вас завтра."
+    elif weekday == 4:  # Пт
+        farewell = "Всего доброго! Ждём вас в понедельник."
+    else:
+        # Сб–Вс: отправляем только основное сообщение без фразы про завтра
+        farewell = ""
+
+    # Проверяем, есть ли у родителя несколько детей,
+    # для которых сегодня оформлены заявки на выдачу.
+    siblings_requests_today = 1
+    try:
+        session = SessionLocal()
+        try:
+            today_start = datetime.combine(today, datetime.min.time())
+            today_end = datetime.combine(today, datetime.max.time())
+            siblings_requests_today = (
+                session.query(PickupRequest)
+                .filter(
+                    PickupRequest.parent_id == parent.id,
+                    PickupRequest.created_at >= today_start,
+                    PickupRequest.created_at <= today_end,
+                )
+                .count()
+            )
+        finally:
+            session.close()
+    except Exception:
+        siblings_requests_today = 1
+
+    if siblings_requests_today > 1:
+        base_text = "Ваши дети благополучно переданы. Спасибо!"
+    else:
+        base_text = "Ваш ребёнок благополучно передан. Спасибо!"
+
+    if farewell:
+        text_to_parent = f"{base_text}\n{farewell}"
+    else:
+        text_to_parent = base_text
+
+    try:
+        await callback.bot.send_message(parent.telegram_id, text_to_parent)
+    except Exception:
+        # Если не смогли уведомить родителя — не падаем.
+        pass
 
     await callback.answer("Готово.")
 

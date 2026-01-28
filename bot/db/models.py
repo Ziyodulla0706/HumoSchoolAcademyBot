@@ -33,9 +33,23 @@ class PickupRequest(Base):
     parent_id = Column(Integer, ForeignKey("users.id"))
     child_id = Column(Integer, ForeignKey("children.id"))
     arrival_minutes = Column(Integer)
-    status = Column(String, default="ACTIVE")  # ACTIVE / DONE / EXPIRED
+    # Статус жизненного цикла заявки:
+    # PENDING      - создана, ещё не озвучена
+    # ANNOUNCED    - хотя бы одна озвучка уже выполнена
+    # HANDED_OVER  - ребёнок передан родителю
+    # EXPIRED      - просрочена (служебный статус для авто‑очистки)
+    status = Column(String, default="PENDING")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, nullable=True)
+    # Поля для работы автоповторов голосовых объявлений
+    last_announce_at = Column(DateTime, nullable=True)
+    next_announce_at = Column(DateTime, nullable=True)
+    announce_count = Column(Integer, default=0)
+    # Поля, связанные с передачей ребёнка
+    handed_over_at = Column(DateTime, nullable=True)
+    handed_over_by = Column(Integer, nullable=True)  # telegram_id сотрудника
+    # Сообщение в канале охраны, которое нужно уметь редактировать
+    channel_message_id = Column(Integer, nullable=True)
 
 
 class Subject(Base):

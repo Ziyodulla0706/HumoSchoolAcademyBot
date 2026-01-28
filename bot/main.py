@@ -7,6 +7,8 @@ from bot.config import BOT_TOKEN
 from bot.db.database import engine, Base
 from bot.handlers import parent, admin, common, admin_manage, teacher, attendance
 from bot.middlewares import BlockCheckMiddleware
+from bot.services import PAAdapter
+from bot.services.repeat_announce_job import start_repeat_announce_job
 
 
 # ---------------- LOGGING ----------------
@@ -22,6 +24,7 @@ def ensure_sqlite_schema():
     Минимальная миграция SQLite без Alembic:
     - добавляет users.is_blocked
     - добавляет pickup_requests.updated_at
+    - добавляет новые поля для автоголосовых объявлений
     """
     db_path = "school.db"
 
@@ -39,7 +42,7 @@ def ensure_sqlite_schema():
                 conn.commit()
                 logging.info("Column users.is_blocked added")
 
-        # pickup_requests.updated_at
+        # pickup_requests: дополнительные поля
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pickup_requests';")
         if cur.fetchone() is not None:
             cur.execute("PRAGMA table_info(pickup_requests);")
@@ -48,6 +51,30 @@ def ensure_sqlite_schema():
                 cur.execute("ALTER TABLE pickup_requests ADD COLUMN updated_at DATETIME;")
                 conn.commit()
                 logging.info("Column pickup_requests.updated_at added")
+            if "last_announce_at" not in cols:
+                cur.execute("ALTER TABLE pickup_requests ADD COLUMN last_announce_at DATETIME;")
+                conn.commit()
+                logging.info("Column pickup_requests.last_announce_at added")
+            if "next_announce_at" not in cols:
+                cur.execute("ALTER TABLE pickup_requests ADD COLUMN next_announce_at DATETIME;")
+                conn.commit()
+                logging.info("Column pickup_requests.next_announce_at added")
+            if "announce_count" not in cols:
+                cur.execute("ALTER TABLE pickup_requests ADD COLUMN announce_count INTEGER DEFAULT 0;")
+                conn.commit()
+                logging.info("Column pickup_requests.announce_count added")
+            if "handed_over_at" not in cols:
+                cur.execute("ALTER TABLE pickup_requests ADD COLUMN handed_over_at DATETIME;")
+                conn.commit()
+                logging.info("Column pickup_requests.handed_over_at added")
+            if "handed_over_by" not in cols:
+                cur.execute("ALTER TABLE pickup_requests ADD COLUMN handed_over_by INTEGER;")
+                conn.commit()
+                logging.info("Column pickup_requests.handed_over_by added")
+            if "channel_message_id" not in cols:
+                cur.execute("ALTER TABLE pickup_requests ADD COLUMN channel_message_id INTEGER;")
+                conn.commit()
+                logging.info("Column pickup_requests.channel_message_id added")
 
     finally:
         conn.close()
@@ -88,6 +115,10 @@ async def main():
         dp.include_router(admin_manage.router)
         dp.include_router(teacher.router)
         dp.include_router(attendance.router)
+
+        # Инициализируем адаптер озвучки и запускаем фоновую задачу
+        pa_adapter = PAAdapter()
+        asyncio.create_task(start_repeat_announce_job(pa_adapter))
 
         logging.info("Starting polling...")
         # В aiogram 3.x используется await dp.start_polling(bot)
